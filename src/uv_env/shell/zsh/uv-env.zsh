@@ -1,5 +1,9 @@
 # uv-env Zsh integration. This file is sourced by `uv-env init zsh`.
 
+typeset _uv_env_zsh_dir="${${(%):-%N}:A:h}"
+source "$_uv_env_zsh_dir/../uv-env-common.sh"
+unset _uv_env_zsh_dir
+
 if [[ -n "${_UV_ENV_ZSH_LOADED:-}" ]]; then
     # Re-sourcing is a safe reload: remove only hooks we own, then restore the
     # shell state captured before the previous integration was applied.
@@ -32,58 +36,25 @@ function _uv_env_restore_file() {
 }
 
 function uv_env_refresh() {
-    local directory="$PWD" root="" profiles="" selection="" profile="" profile_path=""
-
-    # A pyproject.toml is enough for `uv run` to treat a directory as a project.
-    while [[ "$directory" != "/" ]]; do
-        if [[ -f "$directory/pyproject.toml" ]]; then
-            root="$directory"
-            break
-        fi
-        directory="${directory:h}"
-    done
-
-    if [[ -z "$root" ]]; then
-        UV_ENV_PROMPT=""
-        _uv_env_restore_file
-        return
-    fi
-
-    if [[ -d "$root/.env" ]]; then
-        profiles="$root/.env"
-    elif [[ -d "$root/env" ]]; then
-        profiles="$root/env"
-    else
-        UV_ENV_PROMPT="%F{yellow}[uv-env: none]%f"
-        _uv_env_restore_file
-        return
-    fi
-
-    selection="$profiles/.uv-env"
-    if [[ ! -f "$selection" ]]; then
-        UV_ENV_PROMPT="%F{yellow}[uv-env: none]%f"
-        _uv_env_restore_file
-        return
-    fi
-
-    profile="$(<"$selection")"
-    if [[ -z "$profile" || "$profile" != *.env || "$profile" == */* ||
-          "$profile" == "." || "$profile" == ".." ||
-          "$profile" == *$'\n'* || "$profile" == *$'\r'* ]]; then
-        UV_ENV_PROMPT="%F{red}[uv-env: invalid]%f"
-        _uv_env_restore_file
-        return
-    fi
-
-    profile_path="$profiles/$profile"
-    if [[ ! -f "$profile_path" || -L "$profile_path" ]]; then
-        UV_ENV_PROMPT="%F{red}[uv-env: invalid]%f"
-        _uv_env_restore_file
-        return
-    fi
-
-    export UV_ENV_FILE="${profile_path:A}"
-    UV_ENV_PROMPT="%F{cyan}[uv-env: ${profile%.env}]%f"
+    _uv_env_resolve_profile
+    case "$_UV_ENV_PROFILE_STATE" in
+        outside)
+            UV_ENV_PROMPT=""
+            _uv_env_restore_file
+            ;;
+        none)
+            UV_ENV_PROMPT="%F{yellow}[uv-env: <unset>]%f"
+            _uv_env_restore_file
+            ;;
+        invalid)
+            UV_ENV_PROMPT="%F{red}[uv-env: invalid]%f"
+            _uv_env_restore_file
+            ;;
+        active)
+            export UV_ENV_FILE="${_UV_ENV_PROFILE_PATH:A}"
+            UV_ENV_PROMPT="%F{cyan}[uv-env: $_UV_ENV_PROFILE_NAME]%f"
+            ;;
+    esac
 }
 
 autoload -Uz add-zsh-hook
@@ -96,25 +67,12 @@ PROMPT='${UV_ENV_PROMPT:+${UV_ENV_PROMPT} }'"${_UV_ENV_BASE_PROMPT}"
 # Complete only the profile argument of `uv-env use`. This runs on Tab, not on
 # every prompt, and deliberately mirrors the same .env/ then env/ lookup.
 function _uv_env_complete_profiles() {
-    local directory="$PWD" root="" profiles="" profile
+    local profiles="" profile
     local -a names
 
-    while [[ "$directory" != "/" ]]; do
-        if [[ -f "$directory/pyproject.toml" ]]; then
-            root="$directory"
-            break
-        fi
-        directory="${directory:h}"
-    done
-    [[ -z "$root" ]] && return 1
-
-    if [[ -d "$root/.env" ]]; then
-        profiles="$root/.env"
-    elif [[ -d "$root/env" ]]; then
-        profiles="$root/env"
-    else
-        return 1
-    fi
+    _uv_env_find_profile_dir
+    profiles="$_UV_ENV_PROFILE_DIR"
+    [[ -n "$profiles" ]] || return 1
 
     # D includes dot-prefixed profiles such as .prod.env; N handles no matches.
     for profile in "$profiles"/*.env(ND); do
@@ -138,7 +96,7 @@ function _uv-env() {
             (( CURRENT == 3 )) && _uv_env_complete_profiles
             ;;
         init|uninit)
-            (( CURRENT == 3 )) && compadd zsh
+            (( CURRENT == 3 )) && compadd zsh bash
             ;;
     esac
 }

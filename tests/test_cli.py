@@ -87,22 +87,52 @@ def test_init_writes_guarded_block_and_uninit_removes_it(
     monkeypatch.setattr(cli.Path, "home", classmethod(lambda cls: tmp_path))
     runner = CliRunner()
 
-    result = runner.invoke(cli.app, ["init"])
+    result = runner.invoke(cli.app, ["init", "zsh"])
     assert result.exit_code == 0, result.output
     zshrc = tmp_path / ".zshrc"
     contents = zshrc.read_text()
-    assert cli.ZSH_START_MARKER in contents
+    assert cli.START_MARKER in contents
     assert "if [[ -r " in contents
     assert "source " in contents
 
-    result = runner.invoke(cli.app, ["uninit"])
+    result = runner.invoke(cli.app, ["uninit", "zsh"])
     assert result.exit_code == 0, result.output
-    assert cli.ZSH_START_MARKER not in zshrc.read_text()
+    assert cli.START_MARKER not in zshrc.read_text()
+
+
+def test_bash_init_writes_guarded_block_and_uninit_removes_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli.Path, "home", classmethod(lambda cls: tmp_path))
+    runner = CliRunner()
+
+    result = runner.invoke(cli.app, ["init", "bash"])
+    assert result.exit_code == 0, result.output
+    bashrc = tmp_path / ".bashrc"
+    contents = bashrc.read_text()
+    assert cli.START_MARKER in contents
+    assert "if [[ -r " in contents
+    assert "source " in contents
+
+    result = runner.invoke(cli.app, ["uninit", "bash"])
+    assert result.exit_code == 0, result.output
+    assert cli.START_MARKER not in bashrc.read_text()
+
+
+def test_init_requires_a_supported_shell() -> None:
+    runner = CliRunner()
+
+    missing = runner.invoke(cli.app, ["init"])
+    invalid = runner.invoke(cli.app, ["init", "fish"])
+
+    assert missing.exit_code != 0
+    assert invalid.exit_code != 0
+    assert "Supported shells: zsh, bash" in invalid.output
 
 
 def test_update_managed_block_replaces_existing_block() -> None:
-    old = f"before\n{cli.ZSH_START_MARKER}\nold\n{cli.ZSH_END_MARKER}\nafter\n"
-    block = f"{cli.ZSH_START_MARKER}\nnew\n{cli.ZSH_END_MARKER}"
+    old = f"before\n{cli.START_MARKER}\nold\n{cli.END_MARKER}\nafter\n"
+    block = f"{cli.START_MARKER}\nnew\n{cli.END_MARKER}"
 
     updated = cli.update_managed_block(old, block)
 

@@ -13,7 +13,7 @@ from uv_env import cli
 
 ZSH = shutil.which("zsh")
 UV = shutil.which("uv")
-HOOK = Path(__file__).parents[1] / "src" / "uv_env" / "zsh" / "uv-env.zsh"
+HOOK = Path(__file__).parents[1] / "src" / "uv_env" / "shell" / "zsh" / "uv-env.zsh"
 
 pytestmark = pytest.mark.skipif(ZSH is None, reason="zsh is not installed")
 
@@ -55,6 +55,12 @@ def test_hook_exports_selected_profile(project: Path) -> None:
     assert prompt == "%F{cyan}[uv-env: prod]%f"
 
 
+def test_hook_marks_an_unselected_profile(project: Path) -> None:
+    result = run_zsh(project, f"source {shlex.quote(str(HOOK))}; print -r -- $UV_ENV_PROMPT")
+
+    assert result.stdout.strip() == "%F{yellow}[uv-env: <unset>]%f"
+
+
 @pytest.mark.skipif(UV is None, reason="uv is not installed")
 def test_uv_loads_selected_profile_and_applies_a_switch(
     project: Path, monkeypatch: pytest.MonkeyPatch
@@ -86,6 +92,18 @@ def test_completion_commands_match_cli(project: Path) -> None:
     commands = set(get_command(cli.app).commands)
 
     assert completed == commands
+
+
+def test_completion_offers_supported_shells(project: Path) -> None:
+    script = (
+        f"source {shlex.quote(str(HOOK))}; "
+        'function compadd() { completed=("$@"); }; '
+        'words=(uv-env init ""); CURRENT=3; _uv-env; print -rl -- $completed'
+    )
+
+    result = run_zsh(project, script)
+
+    assert result.stdout.splitlines() == ["zsh", "bash"]
 
 
 def test_completion_includes_hidden_profiles(project: Path) -> None:

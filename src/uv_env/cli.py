@@ -15,8 +15,8 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 
 PROFILE_DIRECTORIES = (".env", "env")
 SELECTION_FILE = ".uv-env"
-ZSH_START_MARKER = "# >>> uv-env zsh integration >>>"
-ZSH_END_MARKER = "# <<< uv-env zsh integration <<<"
+START_MARKER = "# >>> uv-env shell integration >>>"
+END_MARKER = "# <<< uv-env shell integration <<<"
 
 
 def find_project_root() -> Path:
@@ -168,17 +168,22 @@ def clear() -> None:
         typer.echo("No profile was selected.")
 
 
-def zsh_integration_file() -> Path:
-    path = Path(__file__).resolve().parent / "zsh" / "uv-env.zsh"
+def integration_file(shell: str) -> Path:
+    """Return the packaged integration script for *shell*."""
+    extension = "zsh" if shell == "zsh" else "bash"
+    path = Path(__file__).resolve().parent / "shell" / shell / f"uv-env.{extension}"
     if not path.is_file():
-        raise typer.BadParameter(f"Zsh integration file is missing: {path}")
+        raise typer.BadParameter(f"{shell.capitalize()} integration file is missing: {path}")
     return path
 
 
-def update_managed_block(contents: str, block: str | None) -> str:
-    """Replace or remove the zsh block owned by uv-env."""
+def update_managed_block(
+    contents: str,
+    block: str | None,
+) -> str:
+    """Replace or remove a shell-integration block owned by uv-env."""
     pattern = re.compile(
-        rf"(?m)^{re.escape(ZSH_START_MARKER)}\n.*?^{re.escape(ZSH_END_MARKER)}\n?",
+        rf"(?m)^{re.escape(START_MARKER)}\n.*?^{re.escape(END_MARKER)}\n?",
         re.DOTALL,
     )
     if pattern.search(contents):
@@ -193,43 +198,56 @@ def update_managed_block(contents: str, block: str | None) -> str:
     return contents.rstrip() + ("\n\n" if contents.strip() else "") + block + "\n"
 
 
-@app.command()
-def init(shell: str = typer.Argument("zsh", help="Shell integration to configure.")) -> None:
-    """Install shell integration (currently zsh, on macOS and Linux)."""
-    if shell != "zsh":
-        raise typer.BadParameter("Supported shells: zsh")
+def shell_configuration(shell: str) -> tuple[Path, Path, str]:
+    """Return the rc file and managed-block details for a supported shell."""
+    shell = shell.lower()
+    if shell == "zsh":
+        return (
+            Path.home() / ".zshrc",
+            integration_file(shell),
+            "Zsh",
+        )
+    if shell == "bash":
+        return (
+            Path.home() / ".bashrc",
+            integration_file(shell),
+            "Bash",
+        )
+    raise typer.BadParameter("Supported shells: zsh, bash")
 
-    zshrc = Path.home() / ".zshrc"
-    source_line = f"source {shlex.quote(str(zsh_integration_file()))}"
+
+@app.command()
+def init(shell: str = typer.Argument(..., help="Shell integration: zsh or bash.")) -> None:
+    """Install Zsh or Bash shell integration."""
+    rc_file, hook, display_name = shell_configuration(shell)
+    source_line = f"source {shlex.quote(str(hook))}"
     block = (
-        f"{ZSH_START_MARKER}\n"
-        f"if [[ -r {shlex.quote(str(zsh_integration_file()))} ]]; then\n"
+        f"{START_MARKER}\n"
+        f"if [[ -r {shlex.quote(str(hook))} ]]; then\n"
         f"    {source_line}\n"
         "fi\n"
-        f"{ZSH_END_MARKER}"
+        f"{END_MARKER}"
     )
-    contents = zshrc.read_text() if zshrc.exists() else ""
-    zshrc.write_text(update_managed_block(contents, block))
-    typer.echo(f"Configured Zsh integration in {zshrc}")
-    typer.echo("Restart Zsh or run: source ~/.zshrc")
+    contents = rc_file.read_text() if rc_file.exists() else ""
+    rc_file.write_text(update_managed_block(contents, block))
+    typer.echo(f"Configured {display_name} integration in {rc_file}")
+    typer.echo(f"Restart {display_name} or run: source ~/{rc_file.name}")
 
 
 @app.command()
-def uninit(shell: str = typer.Argument("zsh", help="Shell integration to remove.")) -> None:
+def uninit(shell: str = typer.Argument(..., help="Shell integration: zsh or bash.")) -> None:
     """Remove the shell integration installed by ``uv-env init``."""
-    if shell != "zsh":
-        raise typer.BadParameter("Supported shells: zsh")
-    zshrc = Path.home() / ".zshrc"
-    if not zshrc.exists():
-        typer.echo("Zsh integration is not configured.")
+    rc_file, _, display_name = shell_configuration(shell)
+    if not rc_file.exists():
+        typer.echo(f"{display_name} integration is not configured.")
         return
-    original = zshrc.read_text()
+    original = rc_file.read_text()
     updated = update_managed_block(original, None)
     if updated == original:
-        typer.echo("Zsh integration is not configured.")
+        typer.echo(f"{display_name} integration is not configured.")
         return
-    zshrc.write_text(updated)
-    typer.echo(f"Removed Zsh integration from {zshrc}")
+    rc_file.write_text(updated)
+    typer.echo(f"Removed {display_name} integration from {rc_file}")
 
 
 if __name__ == "__main__":
