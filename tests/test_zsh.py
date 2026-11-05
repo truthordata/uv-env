@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+import os
 from pathlib import Path
 
 import pytest
@@ -31,12 +32,14 @@ def project(tmp_path: Path) -> Path:
 
 
 def run_zsh(project: Path, script: str) -> subprocess.CompletedProcess[str]:
+    environment = os.environ | {"ZDOTDIR": str(project.parent)}
     return subprocess.run(
         [ZSH, "-fc", script],
         cwd=project / "nested",
         text=True,
         capture_output=True,
         check=True,
+        env=environment,
     )
 
 
@@ -119,11 +122,9 @@ def test_completion_includes_hidden_profiles(project: Path) -> None:
     assert result.stdout.splitlines() == [".preview", "dev", "prod"]
 
 
-def test_completion_registers_after_late_compinit(project: Path) -> None:
+def test_completion_is_initialized_when_zsh_has_not_done_so(project: Path) -> None:
     script = (
         f"source {shlex.quote(str(HOOK))}; "
-        "autoload -Uz compinit; compinit -C; "
-        "for hook in $precmd_functions; do $hook; done; "
         'print -r -- "$_comps[uv-env]"'
     )
 
@@ -148,4 +149,3 @@ def test_re_sourcing_replaces_hooks_without_repeating_the_prompt(project: Path) 
     assert environment_file == str((project / "env" / "prod.env").resolve())
     assert prompt == "${UV_ENV_PROMPT:+${UV_ENV_PROMPT} }base> "
     assert precmd_functions.count("uv_env_refresh") == 1
-    assert "_uv_env_register_completion" not in precmd_functions

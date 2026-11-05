@@ -10,7 +10,6 @@ if [[ -n "${_UV_ENV_ZSH_LOADED:-}" ]]; then
     autoload -Uz add-zsh-hook
     add-zsh-hook -d chpwd uv_env_refresh 2>/dev/null
     add-zsh-hook -d precmd uv_env_refresh 2>/dev/null
-    add-zsh-hook -d precmd _uv_env_register_completion 2>/dev/null
     _uv_env_restore_file
     PROMPT="$_UV_ENV_BASE_PROMPT"
 fi
@@ -101,15 +100,12 @@ function _uv-env() {
     esac
 }
 
-# Do not run compinit ourselves: it can be comparatively expensive and is
-# user-managed. Register now when it is ready, or at the first prompt after a
-# later compinit invocation.
-function _uv_env_register_completion() {
-    (( $+functions[compdef] )) || return 0
-    compdef _uv-env uv-env
-    add-zsh-hook -d precmd _uv_env_register_completion
-}
-
-_uv_env_register_completion
-(( $+functions[compdef] )) || add-zsh-hook precmd _uv_env_register_completion
+# A plain Zsh installation has filename completion but no `compdef` until
+# compinit runs. Bootstrap it only when the user's configuration has not
+# already done so; established Zsh setups take this fast path.
+if (( ! $+functions[compdef] )); then
+    autoload -Uz compinit
+    compinit
+fi
+compdef _uv-env uv-env
 uv_env_refresh
