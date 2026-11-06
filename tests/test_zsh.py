@@ -22,11 +22,11 @@ pytestmark = pytest.mark.skipif(ZSH is None, reason="zsh is not installed")
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     root = tmp_path / "project"
-    profiles = root / "env"
-    profiles.mkdir(parents=True)
+    env_files = root / "env"
+    env_files.mkdir(parents=True)
     (root / "pyproject.toml").touch()
-    (profiles / "dev.env").write_text("UV_ENV_TEST_PROFILE=dev\n")
-    (profiles / "prod.env").write_text("UV_ENV_TEST_PROFILE=prod\n")
+    (env_files / "dev.env").write_text("UV_ENV_TEST_STACK=dev\n")
+    (env_files / "prod.env").write_text("UV_ENV_TEST_STACK=prod\n")
     (root / "nested").mkdir()
     return root
 
@@ -47,7 +47,7 @@ def test_hook_is_valid_zsh() -> None:
     subprocess.run([ZSH, "-n", str(HOOK)], check=True)
 
 
-def test_hook_exports_selected_profile(project: Path) -> None:
+def test_hook_exports_selected_env_stack(project: Path) -> None:
     (project / "env" / cli.SELECTION_FILE).write_text("prod.env\n")
     script = f"source {shlex.quote(str(HOOK))}; print -r -- $UV_ENV_FILE; print -r -- $UV_ENV_PROMPT"
 
@@ -58,30 +58,34 @@ def test_hook_exports_selected_profile(project: Path) -> None:
     assert prompt == "%F{cyan}[uv-env: prod]%f"
 
 
-def test_hook_marks_an_unselected_profile(project: Path) -> None:
+def test_hook_prefixes_an_alias_stack_with_at(project: Path) -> None:
+    (project / "env" / cli.SELECTION_FILE).write_text("use @test\nalias test dev.env prod.env\n")
+    script = f"source {shlex.quote(str(HOOK))}; print -r -- $UV_ENV_PROMPT"
+
+    assert run_zsh(project, script).stdout.strip() == "%F{cyan}[uv-env: @test]%f"
+
+
+def test_hook_marks_an_unselected_env_stack(project: Path) -> None:
     result = run_zsh(project, f"source {shlex.quote(str(HOOK))}; print -r -- $UV_ENV_PROMPT")
 
     assert result.stdout.strip() == "%F{yellow}[uv-env: <unset>]%f"
 
 
-def test_make_wrapper_loads_the_selected_profile(project: Path, tmp_path: Path) -> None:
-    (project / "env" / cli.SELECTION_FILE).write_text("prod.env\n")
+def test_make_wrapper_loads_later_env_file_override(project: Path, tmp_path: Path) -> None:
+    (project / "env" / cli.SELECTION_FILE).write_text("use @test\nalias test dev.env prod.env\n")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_uv = fake_bin / "uv"
     fake_uv.write_text(
         "#!/usr/bin/env bash\n"
         "shift\n"
-        "test \"$1\" = --env-file\n"
-        "env_file=$2\n"
-        "shift 2\n"
         "set -a\n"
-        ". \"$env_file\"\n"
+        "for env_file in $UV_ENV_FILE; do . \"$env_file\"; done\n"
         "set +a\n"
         "exec \"$@\"\n"
     )
     fake_make = fake_bin / "make"
-    fake_make.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$UV_ENV_TEST_PROFILE\"\n")
+    fake_make.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$UV_ENV_TEST_STACK\"\n")
     fake_uv.chmod(0o755)
     fake_make.chmod(0o755)
 
@@ -94,22 +98,22 @@ def test_make_wrapper_loads_the_selected_profile(project: Path, tmp_path: Path) 
 
 
 @pytest.mark.skipif(UV is None, reason="uv is not installed")
-def test_uv_loads_selected_profile_and_applies_a_switch(
-    project: Path, monkeypatch: pytest.MonkeyPatch
+def test_uv_end_to_end_loads_an_alias_stack_with_later_override(
+    project: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.chdir(project / "nested")
     runner = CliRunner()
 
-    first = runner.invoke(cli.app, ["use", "prod"])
-    assert first.exit_code == 0, first.output
+    result = runner.invoke(cli.app, ["use", "--alias", "test", "dev", "prod"])
+    assert result.exit_code == 0, result.output
 
-    command = "python -c 'import os; print(os.environ[\"UV_ENV_TEST_PROFILE\"])'"
-    script = f"source {shlex.quote(str(HOOK))}; {UV} run --no-project --offline {command}"
+    command = "python -c 'import os; print(os.environ[\"UV_ENV_TEST_STACK\"])'"
+    cache = tmp_path / "uv-cache"
+    script = (
+        f"source {shlex.quote(str(HOOK))}; "
+        f"UV_CACHE_DIR={shlex.quote(str(cache))} {UV} run --no-project --offline {command}"
+    )
     assert run_zsh(project, script).stdout.strip() == "prod"
-
-    second = runner.invoke(cli.app, ["use", "dev"])
-    assert second.exit_code == 0, second.output
-    assert run_zsh(project, script).stdout.strip() == "dev"
 
 
 def test_completion_commands_match_cli(project: Path) -> None:
@@ -138,17 +142,18 @@ def test_completion_offers_supported_shells(project: Path) -> None:
     assert result.stdout.splitlines() == ["zsh", "bash"]
 
 
-def test_completion_includes_hidden_profiles(project: Path) -> None:
+def test_completion_includes_env_files_and_aliases(project: Path) -> None:
     (project / "env" / ".preview.env").touch()
+    (project / "env" / cli.SELECTION_FILE).write_text("use @test\nalias test dev.env prod.env\n")
     script = (
         f"source {shlex.quote(str(HOOK))}; "
         'function compadd() { local name="${@[-1]}"; completed=("${(@P)name}"); }; '
-        "_uv_env_complete_profiles; print -rl -- $completed"
+        "_uv_env_complete_env_files; print -rl -- $completed"
     )
 
     result = run_zsh(project, script)
 
-    assert result.stdout.splitlines() == [".preview", "dev", "prod"]
+    assert set(result.stdout.splitlines()) == {".preview", "dev", "prod", "@test"}
 
 
 def test_completion_is_initialized_when_zsh_has_not_done_so(project: Path) -> None:

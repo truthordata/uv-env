@@ -11,11 +11,11 @@ from uv_env import cli
 @pytest.fixture
 def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "project"
-    profiles = root / "env"
-    profiles.mkdir(parents=True)
+    env_files = root / "env"
+    env_files.mkdir(parents=True)
     (root / "pyproject.toml").touch()
-    (profiles / "dev.env").write_text("MODE=dev\n")
-    (profiles / "prod.env").write_text("MODE=prod\n")
+    (env_files / "dev.env").write_text("MODE=dev\n")
+    (env_files / "prod.env").write_text("MODE=prod\n")
     nested = root / "src" / "package"
     nested.mkdir(parents=True)
     monkeypatch.chdir(nested)
@@ -27,15 +27,15 @@ def test_use_list_status_and_clear(project: Path) -> None:
 
     result = runner.invoke(cli.app, ["use", "prod"])
     assert result.exit_code == 0, result.output
-    assert (project / "env" / cli.SELECTION_FILE).read_text() == "prod.env\n"
+    assert (project / "env" / cli.SELECTION_FILE).read_text() == "use prod.env\n"
 
     result = runner.invoke(cli.app, ["list"])
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines() == ["dev", "prod *"]
+    assert result.output.splitlines() == ["Env files:", "  dev", "  prod *"]
 
     result = runner.invoke(cli.app, ["status"])
     assert result.exit_code == 0, result.output
-    assert "Selected profile: prod" in result.output
+    assert "Selected env stack: prod" in result.output
     assert str(project / "env" / "prod.env") in result.output
 
     result = runner.invoke(cli.app, ["clear"])
@@ -43,13 +43,33 @@ def test_use_list_status_and_clear(project: Path) -> None:
     assert not (project / "env" / cli.SELECTION_FILE).exists()
 
 
-def test_hidden_profile_is_selectable(project: Path) -> None:
+def test_hidden_env_file_is_selectable(project: Path) -> None:
     (project / "env" / ".preview.env").write_text("MODE=preview\n")
 
     result = CliRunner().invoke(cli.app, ["use", ".preview"])
 
     assert result.exit_code == 0, result.output
-    assert (project / "env" / cli.SELECTION_FILE).read_text() == ".preview.env\n"
+    assert (project / "env" / cli.SELECTION_FILE).read_text() == "use .preview.env\n"
+
+
+def test_use_selects_an_ordered_stack_and_saves_an_alias(project: Path) -> None:
+    runner = CliRunner()
+
+    result = runner.invoke(cli.app, ["use", "--alias", "dev", "dev", "prod"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "Selected env stack: dev"
+    assert (project / "env" / cli.SELECTION_FILE).read_text() == (
+        "use @dev\nalias dev dev.env prod.env\n"
+    )
+
+    result = runner.invoke(cli.app, ["use", "dev", "prod"])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "Selected env stack: dev+prod"
+
+    result = runner.invoke(cli.app, ["use", "@dev"])
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "Selected env stack: dev"
 
 
 def test_use_prefers_dotenv_directory(project: Path) -> None:
@@ -60,16 +80,16 @@ def test_use_prefers_dotenv_directory(project: Path) -> None:
     result = CliRunner().invoke(cli.app, ["use", "dev"])
 
     assert result.exit_code == 0, result.output
-    assert (dotenv / cli.SELECTION_FILE).read_text() == "dev.env\n"
+    assert (dotenv / cli.SELECTION_FILE).read_text() == "use dev.env\n"
     assert not (project / "env" / cli.SELECTION_FILE).exists()
 
 
 @pytest.mark.parametrize("name", ["../dev", "nested/dev", "bad\nname"])
-def test_use_rejects_non_profile_names(project: Path, name: str) -> None:
+def test_use_rejects_non_env_file_names(project: Path, name: str) -> None:
     result = CliRunner().invoke(cli.app, ["use", name])
 
     assert result.exit_code != 0
-    assert "Provide a profile name, not a path." in result.output
+    assert "Provide an env-file name without whitespace or a path." in result.output
 
 
 def test_status_rejects_invalid_selection(project: Path) -> None:
@@ -78,7 +98,7 @@ def test_status_rejects_invalid_selection(project: Path) -> None:
     result = CliRunner().invoke(cli.app, ["status"])
 
     assert result.exit_code != 0
-    assert "Profile does not exist: missing.env" in result.output
+    assert "Env file does not exist: missing.env" in result.output
 
 
 def test_init_writes_guarded_block_and_uninit_removes_it(

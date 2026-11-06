@@ -37,8 +37,8 @@ function _uv_env_restore_file() {
 }
 
 function uv_env_refresh() {
-    _uv_env_resolve_profile
-    case "$_UV_ENV_PROFILE_STATE" in
+    _uv_env_resolve_stack
+    case "$_UV_ENV_STACK_STATE" in
         outside)
             UV_ENV_PROMPT=""
             _uv_env_restore_file
@@ -52,8 +52,8 @@ function uv_env_refresh() {
             _uv_env_restore_file
             ;;
         active)
-            export UV_ENV_FILE="${_UV_ENV_PROFILE_PATH:A}"
-            UV_ENV_PROMPT="%F{cyan}[uv-env: $_UV_ENV_PROFILE_NAME]%f"
+            export UV_ENV_FILE="$_UV_ENV_STACK_PATHS"
+            UV_ENV_PROMPT="%F{cyan}[uv-env: $_UV_ENV_STACK_NAME]%f"
             ;;
     esac
 }
@@ -65,21 +65,31 @@ add-zsh-hook precmd uv_env_refresh
 setopt PROMPT_SUBST
 PROMPT='${UV_ENV_PROMPT:+${UV_ENV_PROMPT} }'"${_UV_ENV_BASE_PROMPT}"
 
-# Complete only the profile argument of `uv-env use`. This runs on Tab, not on
-# every prompt, and deliberately mirrors the same .env/ then env/ lookup.
-function _uv_env_complete_profiles() {
-    local profiles="" profile
+# Complete env-file arguments to `uv-env use`. This runs on Tab, not on every
+# prompt, and deliberately mirrors the same .env/ then env/ lookup.
+function _uv_env_complete_env_files() {
+    local env_files="" env_file line="" alias=""
     local -a names
 
-    _uv_env_find_profile_dir
-    profiles="$_UV_ENV_PROFILE_DIR"
-    [[ -n "$profiles" ]] || return 1
+    _uv_env_find_env_dir
+    env_files="$_UV_ENV_ENV_DIR"
+    [[ -n "$env_files" ]] || return 1
 
-    # D includes dot-prefixed profiles such as .prod.env; N handles no matches.
-    for profile in "$profiles"/*.env(ND); do
-        [[ -f "$profile" && ! -L "$profile" ]] || continue
-        names+=("${profile:t:r}")
+    # D includes dot-prefixed env files such as .prod.env; N handles no matches.
+    for env_file in "$env_files"/*.env(ND); do
+        [[ -f "$env_file" && ! -L "$env_file" ]] || continue
+        env_file="${env_file:t:r}"
+        [[ " ${words[*]} " == *" $env_file "* ]] && continue
+        names+=("$env_file")
     done
+    if [[ -f "$env_files/.uv-env" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" == alias\ * ]] || continue
+            alias="${line#alias }"
+            alias="${alias%% *}"
+            names+=("@$alias")
+        done < "$env_files/.uv-env"
+    fi
     (( ${#names} )) && compadd -Q -a names
 }
 
@@ -94,7 +104,7 @@ function _uv-env() {
 
     case "${words[2]:-}" in
         use)
-            (( CURRENT == 3 )) && _uv_env_complete_profiles
+            (( CURRENT >= 3 )) && _uv_env_complete_env_files
             ;;
         init|uninit)
             (( CURRENT == 3 )) && compadd zsh bash

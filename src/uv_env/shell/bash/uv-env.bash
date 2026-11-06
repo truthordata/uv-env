@@ -42,9 +42,8 @@ function _uv_env_restore_file() {
 }
 
 function uv_env_refresh() {
-    local profile_directory=""
-    _uv_env_resolve_profile
-    case "$_UV_ENV_PROFILE_STATE" in
+    _uv_env_resolve_stack
+    case "$_UV_ENV_STACK_STATE" in
         outside)
             UV_ENV_PROMPT=""
             _uv_env_restore_file
@@ -58,30 +57,36 @@ function uv_env_refresh() {
             _uv_env_restore_file
             ;;
         active)
-            profile_directory="$(cd -P -- "$(dirname -- "$_UV_ENV_PROFILE_PATH")" && pwd)" || return
-            export UV_ENV_FILE="$profile_directory/${_UV_ENV_PROFILE_PATH##*/}"
-            UV_ENV_PROMPT="\\[\\e[36m\\][uv-env: $_UV_ENV_PROFILE_NAME]\\[\\e[0m\\]"
+            export UV_ENV_FILE="$_UV_ENV_STACK_PATHS"
+            UV_ENV_PROMPT="\\[\\e[36m\\][uv-env: $_UV_ENV_STACK_NAME]\\[\\e[0m\\]"
             ;;
     esac
 }
 
-function _uv_env_complete_profiles() {
-    local profiles="" profile current="${COMP_WORDS[COMP_CWORD]}"
+function _uv_env_complete_env_files() {
+    local env_files="" env_file line="" alias="" current="${COMP_WORDS[COMP_CWORD]}"
     local dotglob_state
     COMPREPLY=()
 
-    _uv_env_find_profile_dir
-    profiles="$_UV_ENV_PROFILE_DIR"
-    [[ -n "$profiles" ]] || return
+    _uv_env_find_env_dir
+    env_files="$_UV_ENV_ENV_DIR"
+    [[ -n "$env_files" ]] || return
 
     dotglob_state="$(shopt -p dotglob)"
     shopt -s nullglob dotglob
-    for profile in "$profiles"/*.env; do
-        [[ -f "$profile" && ! -L "$profile" ]] || continue
-        profile="${profile##*/}"
-        profile="${profile%.env}"
-        [[ "$profile" == "$current"* ]] && COMPREPLY+=("$profile")
+    for env_file in "$env_files"/*.env; do
+        [[ -f "$env_file" && ! -L "$env_file" ]] || continue
+        env_file="${env_file##*/}"
+        env_file="${env_file%.env}"
+        [[ " ${COMP_WORDS[*]} " == *" $env_file "* ]] && continue
+        [[ "$env_file" == "$current"* ]] && COMPREPLY+=("$env_file")
     done
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" == alias\ * ]] || continue
+        alias="${line#alias }"
+        alias="${alias%% *}"
+        [[ "@$alias" == "$current"* ]] && COMPREPLY+=("@$alias")
+    done < "$env_files/.uv-env" 2>/dev/null
     eval "$dotglob_state"
 }
 
@@ -97,7 +102,7 @@ function _uv_env_complete() {
 
     case "${COMP_WORDS[1]:-}" in
         use)
-            (( COMP_CWORD == 2 )) && _uv_env_complete_profiles
+            (( COMP_CWORD >= 2 )) && _uv_env_complete_env_files
             ;;
         init|uninit)
             (( COMP_CWORD == 2 )) && COMPREPLY=( $(compgen -W "zsh bash" -- "$current") )
