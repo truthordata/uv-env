@@ -52,6 +52,17 @@ def test_hidden_env_file_is_selectable(project: Path) -> None:
     assert (project / "env" / cli.SELECTION_FILE).read_text() == "use .preview.env\n"
 
 
+def test_nested_env_file_is_selectable(project: Path) -> None:
+    nested = project / "env" / "services"
+    nested.mkdir()
+    (nested / "api.env").write_text("MODE=api\n")
+
+    result = CliRunner().invoke(cli.app, ["use", "services/api"])
+
+    assert result.exit_code == 0, result.output
+    assert (project / "env" / cli.SELECTION_FILE).read_text() == "use services/api.env\n"
+
+
 def test_use_selects_an_ordered_stack_and_saves_an_alias(project: Path) -> None:
     runner = CliRunner()
 
@@ -84,12 +95,12 @@ def test_use_prefers_dotenv_directory(project: Path) -> None:
     assert not (project / "env" / cli.SELECTION_FILE).exists()
 
 
-@pytest.mark.parametrize("name", ["../dev", "nested/dev", "bad\nname"])
+@pytest.mark.parametrize("name", ["../dev", "/tmp/dev", "bad\nname"])
 def test_use_rejects_non_env_file_names(project: Path, name: str) -> None:
     result = CliRunner().invoke(cli.app, ["use", name])
 
     assert result.exit_code != 0
-    assert "Provide an env-file name without whitespace or a path." in result.output
+    assert "Provide an env-file path without whitespace or .. segments." in result.output
 
 
 def test_status_rejects_invalid_selection(project: Path) -> None:

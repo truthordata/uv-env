@@ -41,15 +41,17 @@ def env_dir() -> Path:
 
 def env_file_path(name: str) -> Path:
     """Validate *name* and return its env-file path."""
+    candidate_name = Path(name)
     if (
         not name
-        or Path(name).name != name
+        or candidate_name.is_absolute()
+        or ".." in candidate_name.parts
         or name in {".", ".."}
         or any(character.isspace() for character in name)
         or "\n" in name
         or "\r" in name
     ):
-        raise typer.BadParameter("Provide an env-file name without whitespace or a path.")
+        raise typer.BadParameter("Provide an env-file path without whitespace or .. segments.")
     if not name.endswith(".env"):
         name += ".env"
 
@@ -58,7 +60,7 @@ def env_file_path(name: str) -> Path:
     if candidate.is_symlink():
         raise typer.BadParameter("Env file must be a regular file, not a symlink.")
     path = candidate.resolve()
-    if path.parent != directory:
+    if not path.is_relative_to(directory):
         raise typer.BadParameter("Env file must be inside the env-file directory.")
     if not path.is_file():
         raise typer.BadParameter(f"Env file does not exist: {name}")
@@ -69,9 +71,14 @@ def env_files() -> list[Path]:
     """Return selectable env files in display order."""
     return [
         path
-        for path in sorted(env_dir().glob("*.env"))
+        for path in sorted(env_dir().rglob("*.env"))
         if path.is_file() and not path.is_symlink()
     ]
+
+
+def env_file_display_name(path: Path) -> str:
+    """Return an env-file path relative to the env directory, without `.env`."""
+    return path.relative_to(env_dir().resolve()).with_suffix("").as_posix()
 
 
 @dataclass(frozen=True)
@@ -83,7 +90,7 @@ class EnvStack:
 
     @property
     def display_name(self) -> str:
-        return self.name or "+".join(path.stem for path in self.files)
+        return self.name or "+".join(env_file_display_name(path) for path in self.files)
 
 
 @dataclass
@@ -102,7 +109,7 @@ def _canonical_env_file_name(name: str) -> str:
     if name.startswith("@"):
         raise typer.BadParameter("An alias must be the only selection argument.")
     path = env_file_path(name)
-    return path.name
+    return path.relative_to(env_dir().resolve()).as_posix()
 
 
 def read_stack_config() -> StackConfig:
@@ -167,12 +174,12 @@ def list_env_files() -> None:
     typer.echo("Env files:")
     for path in env_files():
         marker = " *" if path.name in selected_names else ""
-        typer.echo(f"  {path.stem}{marker}")
+        typer.echo(f"  {env_file_display_name(path)}{marker}")
     if config.aliases:
         typer.echo("Saved stacks:")
         for name, files in config.aliases.items():
             marker = " *" if selected and selected.name == name else ""
-            typer.echo(f"  @{name}{marker}  {' + '.join(Path(file).stem for file in files)}")
+            typer.echo(f"  @{name}{marker}  {' + '.join(Path(file).with_suffix('').as_posix() for file in files)}")
 
 
 @app.command()
@@ -225,7 +232,7 @@ def select() -> None:
     if fzf:
         result = subprocess.run(
             [fzf, "--prompt=uv-env> ", "--height=10", "--reverse"],
-            input="\n".join(path.stem for path in available) + "\n",
+            input="\n".join(env_file_display_name(path) for path in available) + "\n",
             text=True,
             capture_output=True,
             check=False,
@@ -243,11 +250,11 @@ def select() -> None:
 
     typer.echo("fzf is not installed; choose by number instead.")
     for index, path in enumerate(available, start=1):
-        typer.echo(f"{index}. {path.stem}")
+        typer.echo(f"{index}. {env_file_display_name(path)}")
     choice = typer.prompt("Profile number", type=int)
     if choice < 1 or choice > len(available):
         raise typer.BadParameter("Profile number is out of range.")
-    use([available[choice - 1].stem])
+    use([env_file_display_name(available[choice - 1])])
 
 
 @app.command()

@@ -28,7 +28,7 @@ function _uv_env_find_env_dir() {
 
 function _uv_env_resolve_stack() {
     local selection_file="" selection="" line="" alias_name="" alias_files=""
-    local env_file="" env_file_path="" stack_paths="" stack_name=""
+    local env_file="" env_file_path="" resolved_dir="" env_root="" stack_paths="" stack_name=""
     _UV_ENV_STACK_STATE="outside"
     _UV_ENV_STACK_NAME=""
     _UV_ENV_STACK_PATHS=""
@@ -39,6 +39,11 @@ function _uv_env_resolve_stack() {
         # project: show that no env file is selected in the former case.
         [[ -n "$_UV_ENV_PROJECT_ROOT" ]] && _UV_ENV_STACK_STATE="none"
         return
+    fi
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+        env_root="${_UV_ENV_ENV_DIR:A}"
+    else
+        env_root="$(cd -P -- "$_UV_ENV_ENV_DIR" && pwd)" || return
     fi
 
     selection_file="$_UV_ENV_ENV_DIR/.uv-env"
@@ -73,7 +78,8 @@ function _uv_env_resolve_stack() {
     fi
 
     while IFS= read -r env_file; do
-        if [[ "$env_file" != *.env || "$env_file" == */* || "$env_file" == "." ||
+        if [[ "$env_file" != *.env || "$env_file" == /* || "$env_file" == ../* ||
+              "$env_file" == */../* || "$env_file" == */.. || "$env_file" == "." ||
               "$env_file" == ".." || "$env_file" == *$'\r'* ]]; then
             _UV_ENV_STACK_STATE="invalid"
             return
@@ -83,6 +89,16 @@ function _uv_env_resolve_stack() {
             _UV_ENV_STACK_STATE="invalid"
             return
         fi
+        if [[ -n "${ZSH_VERSION:-}" ]]; then
+            resolved_dir="${env_file_path:h:A}"
+        else
+            resolved_dir="$(cd -P -- "$(dirname -- "$env_file_path")" && pwd)" || return
+        fi
+        if [[ "$resolved_dir" != "$env_root" && "$resolved_dir" != "$env_root/"* ]]; then
+            _UV_ENV_STACK_STATE="invalid"
+            return
+        fi
+        env_file_path="$resolved_dir/${env_file_path##*/}"
         stack_paths="${stack_paths:+$stack_paths }$env_file_path"
     done < <(printf '%s\n' "$selection" | tr ' ' '\n')
     [[ -n "$stack_paths" ]] || {

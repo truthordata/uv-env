@@ -144,6 +144,9 @@ def test_completion_offers_supported_shells(project: Path) -> None:
 
 def test_completion_includes_env_files_and_aliases(project: Path) -> None:
     (project / "env" / ".preview.env").touch()
+    nested = project / "env" / "services"
+    nested.mkdir()
+    (nested / "api.env").touch()
     (project / "env" / cli.SELECTION_FILE).write_text("use @test\nalias test dev.env prod.env\n")
     script = (
         f"source {shlex.quote(str(HOOK))}; "
@@ -153,7 +156,7 @@ def test_completion_includes_env_files_and_aliases(project: Path) -> None:
 
     result = run_zsh(project, script)
 
-    assert set(result.stdout.splitlines()) == {".preview", "dev", "prod", "@test"}
+    assert set(result.stdout.splitlines()) == {".preview", "dev", "prod", "services/api", "@test"}
 
 
 def test_completion_is_initialized_when_zsh_has_not_done_so(project: Path) -> None:

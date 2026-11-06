@@ -64,7 +64,7 @@ function uv_env_refresh() {
 }
 
 function _uv_env_complete_env_files() {
-    local env_files="" env_file line="" alias="" current="${COMP_WORDS[COMP_CWORD]}"
+    local env_files="" env_file relative="" line="" alias="" current="${COMP_WORDS[COMP_CWORD]}"
     local dotglob_state
     COMPREPLY=()
 
@@ -74,13 +74,13 @@ function _uv_env_complete_env_files() {
 
     dotglob_state="$(shopt -p dotglob)"
     shopt -s nullglob dotglob
-    for env_file in "$env_files"/*.env; do
+    while IFS= read -r env_file; do
         [[ -f "$env_file" && ! -L "$env_file" ]] || continue
-        env_file="${env_file##*/}"
-        env_file="${env_file%.env}"
-        [[ " ${COMP_WORDS[*]} " == *" $env_file "* ]] && continue
-        [[ "$env_file" == "$current"* ]] && COMPREPLY+=("$env_file")
-    done
+        relative="${env_file#"$env_files"/}"
+        relative="${relative%.env}"
+        [[ " ${COMP_WORDS[*]} " == *" $relative "* ]] && continue
+        [[ "$relative" == "$current"* ]] && COMPREPLY+=("$relative")
+    done < <(find -P "$env_files" -type f -name '*.env' ! -type l)
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ "$line" == alias\ * ]] || continue
         alias="${line#alias }"

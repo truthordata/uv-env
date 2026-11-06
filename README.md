@@ -61,19 +61,29 @@ are unavailable.
 
 ## Project layout
 
-Put named dotenv files in `.env/` (preferred) or `env/`. The selection is a
-plain filename in `.uv-env` alongside them. Treat the entire directory like a
-dotenv file: keep it out of version control, including the selection. The
+Put named dotenv files in `.env/` (preferred) or `env/`. The current selection
+and any aliases live in `.uv-env` alongside them. Treat the entire directory
+like a dotenv file: keep it out of version control, including the selection. The
 repository's `.gitignore` already ignores both `.env/` and `env/`.
+
+Env files may be organized in subdirectories. Refer to them by their path
+relative to `.env/` or `env/`, without the `.env` suffix—for example,
+`uv-env use services/api` selects `env/services/api.env`.
 
 ```text
 my-project/
 ├── pyproject.toml
 └── .env/
-    ├── dev.env
-    ├── prod.env
-    └── .uv-env             # contains: dev.env
+    ├── common/
+    │   └── base.env
+    ├── services/
+    │   └── api.env
+    ├── local/
+    │   └── dev.env
+    └── .uv-env
 ```
+
+## Selecting env files
 
 Select one or more env files and use uv normally. Files are loaded left to
 right, so later layers override duplicate values from earlier ones:
@@ -83,14 +93,18 @@ uv-env use base dev
 uv run python -c 'import os; print(os.environ["DATABASE_URL"])'
 ```
 
-Save a commonly used stack with an alias, then select it with `@`:
+## Stacks and aliases
+
+A stack is an ordered set of env files. The example above selects an ad hoc
+`base+dev` stack. Save a commonly used stack with an alias, then select it with
+`@`:
 
 ```sh
 uv-env use --alias dev base dev
 uv-env use @dev
 ```
 
-The prompt displays `base+dev` for an ad hoc stack and `dev` for `@dev`.
+The prompt displays `base+dev` for an ad hoc stack and `@dev` for an alias.
 Aliases and the current selection are stored in `.uv-env` using a small,
 shell-readable format:
 
@@ -102,15 +116,22 @@ alias dev base.env dev.env
 Older one-line selectors, such as `dev.env`, remain valid and are upgraded the
 next time `uv-env use` writes the file.
 
-`uv-env list`, `uv-env status`, and `uv-env clear` respectively list, inspect,
-and clear the selection without deleting aliases. Env-file names may be supplied with or without the
-`.env` suffix. In Zsh and Bash, `uv-env <Tab>` completes commands,
+## Auto-completion
+
+In Zsh and Bash, `uv-env <Tab>` completes commands,
 `uv-env init <Tab>` and `uv-env uninit <Tab>` complete `zsh` and `bash`, and
 `uv-env use <Tab>` completes env-file names without their suffix and saved
 `@aliases`. Env-file completion candidates must be
 regular files ending in `.env` in the nearest project's `.env/` or `env/`
 directory; dot-prefixed env files such as `.prod.env` are supported and complete
 as `.prod`.
+
+
+## Other Commands
+
+`uv-env list`, `uv-env status`, and `uv-env clear` respectively list, inspect,
+and clear the selection without deleting aliases. Env-file names may be supplied with or without the
+`.env` suffix. 
 
 For an interactive picker, run `uv-env select`. When [fzf](https://github.com/junegunn/fzf)
 is installed it provides a searchable up/down-arrow menu; otherwise uv-env

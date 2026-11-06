@@ -129,6 +129,9 @@ def test_completion_commands_and_shells(project: Path) -> None:
 
 def test_completion_includes_env_files_and_aliases(project: Path) -> None:
     (project / "env" / ".preview.env").touch()
+    nested = project / "env" / "services"
+    nested.mkdir()
+    (nested / "api.env").touch()
     (project / "env" / cli.SELECTION_FILE).write_text("use @test\nalias test dev.env prod.env\n")
     script = (
         f"source {shlex.quote(str(HOOK))}; "
@@ -137,7 +140,7 @@ def test_completion_includes_env_files_and_aliases(project: Path) -> None:
 
     result = run_bash(project, script)
 
-    assert set(result.stdout.splitlines()) == {".preview", "dev", "prod", "@test"}
+    assert set(result.stdout.splitlines()) == {".preview", "dev", "prod", "services/api", "@test"}
 
 
 def test_re_sourcing_replaces_prompt_hook_without_repeating_the_prompt(project: Path) -> None:

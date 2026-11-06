@@ -68,7 +68,7 @@ PROMPT='${UV_ENV_PROMPT:+${UV_ENV_PROMPT} }'"${_UV_ENV_BASE_PROMPT}"
 # Complete env-file arguments to `uv-env use`. This runs on Tab, not on every
 # prompt, and deliberately mirrors the same .env/ then env/ lookup.
 function _uv_env_complete_env_files() {
-    local env_files="" env_file line="" alias=""
+    local env_files="" env_file relative="" line="" alias=""
     local -a names
 
     _uv_env_find_env_dir
@@ -76,11 +76,12 @@ function _uv_env_complete_env_files() {
     [[ -n "$env_files" ]] || return 1
 
     # D includes dot-prefixed env files such as .prod.env; N handles no matches.
-    for env_file in "$env_files"/*.env(ND); do
+    for env_file in "$env_files"/**/*.env(ND); do
         [[ -f "$env_file" && ! -L "$env_file" ]] || continue
-        env_file="${env_file:t:r}"
-        [[ " ${words[*]} " == *" $env_file "* ]] && continue
-        names+=("$env_file")
+        relative="${env_file#$env_files/}"
+        relative="${relative%.env}"
+        [[ " ${words[*]} " == *" $relative "* ]] && continue
+        names+=("$relative")
     done
     if [[ -f "$env_files/.uv-env" ]]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
