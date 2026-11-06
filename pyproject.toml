@@ -1,6 +1,6 @@
 [project]
 name = "uv-env"
-version = "0.1.0"
+version = "0.2.0"
 description = "Select dotenv profiles for uv projects"
 readme = "README.md"
 authors = [

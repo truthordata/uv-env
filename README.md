@@ -4,24 +4,50 @@
 small: env files and the current selection are local environment state; the
 shell hook only sets `UV_ENV_FILE`, which uv reads when it runs.
 
+It visually shows you which stack is active through a shell prompt segment.
+
+## Shell Prompt Segment Example
+
+```console
+% cd my-project
+
+# using .env files directly (with nested dirs for organization)
+[uv-env: <unset>] % uv-env use common/base local/dev
+> Selected env stack: common/base+local/dev
+[uv-env: common/base+local/dev] % uv run python app.py
+
+# using aliases (named/saved stacks)
+[uv-env: common/base+local/dev] % uv-env use @dev
+> Selected env stack: dev
+[uv-env: @dev] % uv run python app.py
+```
+
+
 ## Install
 
-Install once with uv, then enable an explicit shell integration:
+Clone the repository, install it from the local checkout, then enable an
+explicit shell integration:
 
 ```sh
-uv tool install uv-env
+git clone https://github.com/truthordata/uv-env.git
+cd uv-env
+uv tool install .
 uv-env init zsh
 ```
 
-`uv-env init zsh` adds a small, managed `source` block to `~/.zshrc`.
+Then follow any additional instructions printed.
+
+>NOTE: `uv-env init zsh` adds a small, managed `source` block to `~/.zshrc`.
 `uv-env init bash` does the same in `~/.bashrc`, for Bash on Linux, macOS, WSL,
 and Git Bash terminals on Windows. Rerunning either command after an upgrade
 updates its block. Both options complete with Tab after shell integration is
 enabled. Remove an integration with the matching command, such as
 `uv-env uninit bash`.
 
-To make an active env stack available to Make recipes as well, install the
-optional Make wrapper:
+### With Make Wrapper
+
+To make an active env stack available to Make recipes inside a uv-based project as well,
+install using the `--wrap-make` flag:
 
 ```sh
 uv-env init zsh --wrap-make
@@ -32,6 +58,13 @@ Within a project with a selected env stack, plain `make target` then runs as
 inherit the env-file variables. Outside such a project, `make` is unchanged.
 The wrapper applies only to that interactive shell, so use `uv run make ...`
 explicitly in scripts and CI.
+
+## Updating/Upgrading
+
+After getting the latest changes with `git pull`, reinstall it from the repository root with
+`uv tool install --reinstall .`, then rerun `uv-env init zsh` or
+`uv-env init bash` to refresh the managed shell block.
+
 
 ## Remove
 
@@ -141,3 +174,4 @@ When Zsh or Bash enters a directory below a project, the prompt shows the active
 env stack, for example `[uv-env: dev]`. With no selection it shows
 `[uv-env: <unset>]`; an invalid selector is shown in red and is never passed to
 uv. Leaving the project restores the previous value of `UV_ENV_FILE`.
+
