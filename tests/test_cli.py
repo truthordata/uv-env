@@ -94,6 +94,7 @@ def test_init_writes_guarded_block_and_uninit_removes_it(
     assert cli.START_MARKER in contents
     assert "if [[ -r " in contents
     assert "source " in contents
+    assert "_UV_ENV_WRAP_MAKE" not in contents
 
     result = runner.invoke(cli.app, ["uninit", "zsh"])
     assert result.exit_code == 0, result.output
@@ -117,6 +118,17 @@ def test_bash_init_writes_guarded_block_and_uninit_removes_it(
     result = runner.invoke(cli.app, ["uninit", "bash"])
     assert result.exit_code == 0, result.output
     assert cli.START_MARKER not in bashrc.read_text()
+
+
+def test_init_can_enable_the_make_wrapper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli.Path, "home", classmethod(lambda cls: tmp_path))
+
+    result = CliRunner().invoke(cli.app, ["init", "bash", "--wrap-make"])
+
+    assert result.exit_code == 0, result.output
+    contents = (tmp_path / ".bashrc").read_text()
+    assert "_UV_ENV_WRAP_MAKE=1" in contents
+    assert "unset _UV_ENV_WRAP_MAKE" in contents
 
 
 def test_init_requires_a_supported_shell() -> None:

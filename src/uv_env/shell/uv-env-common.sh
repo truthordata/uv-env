@@ -63,3 +63,17 @@ function _uv_env_resolve_profile() {
     _UV_ENV_PROFILE_NAME="${profile%.env}"
     _UV_ENV_PROFILE_PATH="$profile_path"
 }
+
+# Define this only when requested by `uv-env init --wrap-make`.  Resolve the
+# profile for every invocation so `make` also works correctly immediately
+# after a directory change, before the next prompt hook runs.
+function _uv_env_wrap_make() {
+    function make() {
+        _uv_env_resolve_profile
+        if [[ "$_UV_ENV_PROFILE_STATE" == "active" ]]; then
+            command uv run --env-file "$_UV_ENV_PROFILE_PATH" make "$@"
+        else
+            command make "$@"
+        fi
+    }
+}

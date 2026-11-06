@@ -61,6 +61,35 @@ def test_hook_marks_an_unselected_profile(project: Path) -> None:
     assert result.stdout.strip() == r"\[\e[33m\][uv-env: <unset>]\[\e[0m\]"
 
 
+def test_make_wrapper_loads_the_selected_profile(project: Path, tmp_path: Path) -> None:
+    (project / "env" / cli.SELECTION_FILE).write_text("prod.env\n")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_uv = fake_bin / "uv"
+    fake_uv.write_text(
+        "#!/usr/bin/env bash\n"
+        "shift\n"
+        "test \"$1\" = --env-file\n"
+        "env_file=$2\n"
+        "shift 2\n"
+        "set -a\n"
+        ". \"$env_file\"\n"
+        "set +a\n"
+        "exec \"$@\"\n"
+    )
+    fake_make = fake_bin / "make"
+    fake_make.write_text("#!/usr/bin/env bash\nprintf '%s\\n' \"$UV_ENV_TEST_PROFILE\"\n")
+    fake_uv.chmod(0o755)
+    fake_make.chmod(0o755)
+
+    script = (
+        f"PATH={shlex.quote(str(fake_bin))}:$PATH; _UV_ENV_WRAP_MAKE=1; "
+        f"source {shlex.quote(str(HOOK))}; make target"
+    )
+
+    assert run_bash(project, script).stdout.strip() == "prod"
+
+
 @pytest.mark.skipif(UV is None, reason="uv is not installed")
 def test_uv_loads_selected_profile_and_applies_a_switch(
     project: Path, monkeypatch: pytest.MonkeyPatch

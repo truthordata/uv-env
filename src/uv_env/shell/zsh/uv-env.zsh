@@ -4,6 +4,8 @@ typeset _uv_env_zsh_dir="${${(%):-%N}:A:h}"
 source "$_uv_env_zsh_dir/../uv-env-common.sh"
 unset _uv_env_zsh_dir
 
+[[ "${_UV_ENV_WRAP_MAKE:-}" == "1" ]] && _uv_env_wrap_make
+
 if [[ -n "${_UV_ENV_ZSH_LOADED:-}" ]]; then
     # Re-sourcing is a safe reload: remove only hooks we own, then restore the
     # shell state captured before the previous integration was applied.

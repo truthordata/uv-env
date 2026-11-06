@@ -217,14 +217,28 @@ def shell_configuration(shell: str) -> tuple[Path, Path, str]:
 
 
 @app.command()
-def init(shell: str = typer.Argument(..., help="Shell integration: zsh or bash.")) -> None:
+def init(
+    shell: str = typer.Argument(..., help="Shell integration: zsh or bash."),
+    wrap_make: bool = typer.Option(
+        False,
+        "--wrap-make",
+        help="Run make through uv with the selected profile in active projects.",
+    ),
+) -> None:
     """Install Zsh or Bash shell integration."""
     rc_file, hook, display_name = shell_configuration(shell)
     source_line = f"source {shlex.quote(str(hook))}"
+    wrap_make_lines = ""
+    if wrap_make:
+        wrap_make_lines = "    _UV_ENV_WRAP_MAKE=1\n"
+        wrap_make_lines += "    source " + shlex.quote(str(hook)) + "\n"
+        wrap_make_lines += "    unset _UV_ENV_WRAP_MAKE\n"
+    else:
+        wrap_make_lines = f"    {source_line}\n"
     block = (
         f"{START_MARKER}\n"
         f"if [[ -r {shlex.quote(str(hook))} ]]; then\n"
-        f"    {source_line}\n"
+        f"{wrap_make_lines}"
         "fi\n"
         f"{END_MARKER}"
     )

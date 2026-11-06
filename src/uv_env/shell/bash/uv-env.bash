@@ -4,6 +4,8 @@ _uv_env_bash_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$_uv_env_bash_dir/../uv-env-common.sh"
 unset _uv_env_bash_dir
 
+[[ "${_UV_ENV_WRAP_MAKE:-}" == "1" ]] && _uv_env_wrap_make
+
 if [[ -n "${_UV_ENV_BASH_LOADED:-}" ]]; then
     # Re-sourcing is a safe reload: restore only state owned by this hook before
     # installing a fresh prompt hook and completion registration.

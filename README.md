@@ -20,6 +20,19 @@ updates its block. Both options complete with Tab after shell integration is
 enabled. Remove an integration with the matching command, such as
 `uv-env uninit bash`.
 
+To make an active profile available to Make recipes as well, install the
+optional Make wrapper:
+
+```sh
+uv-env init zsh --wrap-make
+```
+
+Within a project with a selected profile, plain `make target` then runs as
+`uv run --env-file <selected-profile> make target`; Make and its recipes
+inherit the profile variables. Outside such a project, `make` is unchanged.
+The wrapper applies only to that interactive shell, so use `uv run make ...`
+explicitly in scripts and CI.
+
 ## Remove
 
 For a full cleanup, remove the shell block before uninstalling the tool:
